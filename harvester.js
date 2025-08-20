@@ -1,5 +1,4 @@
 (async () => {
-  // Load Vue and fflate
   const load = src => new Promise((res, rej) => {
     const s = document.createElement('script');
     s.src = src;
@@ -11,51 +10,16 @@
   await load('https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js');
   await load('https://cdn.jsdelivr.net/npm/fflate/umd/index.js');
 
-  // Create GUI container
   const cage = document.createElement('div');
   cage.id = 'harvester-vault';
   cage.style = `
-    position:fixed;top:10px;right:10px;z-index:999999;
-    background:#111;color:#fff;padding:12px;border-radius:8px;
-    font-family:sans-serif;box-shadow:0 0 10px #000;
-    max-height:80vh;overflow:auto;
+    position:fixed;top:0;right:0;width:100vw;height:100vh;
+    background:#1e1e1e;color:#fff;z-index:999999;
+    font-family:sans-serif;display:flex;flex-direction:row;
+    box-shadow:0 0 20px #000;
   `;
   document.body.appendChild(cage);
 
-  // Scraper modules
-  const scrapeAssets = () => {
-    const nodes = [...document.querySelectorAll('img, video, audio, source, iframe, a[href], link[rel="stylesheet"]')];
-    return [...new Set(nodes.map(n => n.src || n.href || n.getAttribute('data-src')).filter(Boolean))];
-  };
-
-  const scrapeBackgrounds = () => {
-    const urls = [];
-    document.querySelectorAll('*').forEach(el => {
-      const bg = getComputedStyle(el).backgroundImage;
-      const match = bg?.match(/url`\(["']?(.*?)["']?\)`/);
-      if (match?.[1]) urls.push(match[1]);
-    });
-    return urls;
-  };
-
-  const scrollToBottom = () => {
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  };
-
-  const interceptDeletions = () => {
-    const observer = new MutationObserver(muts => {
-      muts.forEach(m => {
-        m.removedNodes.forEach(n => {
-          if (n.tagName && /IMG|VIDEO|AUDIO/.test(n.tagName)) {
-            console.warn('Intercepted deletion:', n.src || n.href);
-          }
-        });
-      });
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-  };
-
-  // Vue App
   Vue.createApp({
     data() {
       return {
@@ -71,14 +35,37 @@
       };
     },
     mounted() {
-      if (this.modules.scrollTrigger) scrollToBottom();
-      if (this.modules.interceptDeletions) interceptDeletions();
+      if (this.modules.scrollTrigger) {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
+      if (this.modules.interceptDeletions) {
+        const observer = new MutationObserver(muts => {
+          muts.forEach(m => {
+            m.removedNodes.forEach(n => {
+              if (n.tagName && /IMG|VIDEO|AUDIO/.test(n.tagName)) {
+                console.warn('Intercepted deletion:', n.src || n.href);
+              }
+            });
+          });
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
 
       setTimeout(() => {
-        const scraped = [];
-        if (this.modules.scrapeAssets) scraped.push(...scrapeAssets());
-        if (this.modules.scrapeBackgrounds) scraped.push(...scrapeBackgrounds());
-        this.assets = [...new Set(scraped)];
+        const nodes = [...document.querySelectorAll('img, video, audio, source, iframe, a[href], link[rel="stylesheet"]')];
+        const urls = this.modules.scrapeAssets
+          ? nodes.map(n => n.src || n.href || n.getAttribute('data-src')).filter(Boolean)
+          : [];
+
+        const bgUrls = this.modules.scrapeBackgrounds
+          ? Array.from(document.querySelectorAll('*')).map(el => {
+              const bg = getComputedStyle(el).backgroundImage;
+              const match = bg?.match(/url`\(["']?(.*?)["']?\)`/);
+              return match?.[1];
+            }).filter(Boolean)
+          : [];
+
+        this.assets = [...new Set([...urls, ...bgUrls])];
       }, 1000);
     },
     methods: {
@@ -108,22 +95,24 @@
       }
     },
     template: `
-      <div>
-        <h3>😈 Harvester Vault</h3>
-        <div style="margin-bottom:10px;">
-          <strong>Modules:</strong><br>
-          <label><input type="checkbox" v-model="modules.scrapeAssets"> Scrape Assets</label><br>
-          <label><input type="checkbox" v-model="modules.scrapeBackgrounds"> Background Images</label><br>
-          <label><input type="checkbox" v-model="modules.scrollTrigger"> Scroll Trigger</label><br>
-          <label><input type="checkbox" v-model="modules.interceptDeletions"> Deletion Interception</label>
-        </div>
+      <div style="width:250px;padding:15px;border-right:1px solid #333;">
+        <h3>😈 Vault Settings</h3>
+        <label><input type="checkbox" v-model="modules.scrapeAssets"> 🧲 Scrape Assets</label><br>
+        <label><input type="checkbox" v-model="modules.scrapeBackgrounds"> 🖼️ Backgrounds</label><br>
+        <label><input type="checkbox" v-model="modules.scrollTrigger"> 🔄 Scroll Trigger</label><br>
+        <label><input type="checkbox" v-model="modules.interceptDeletions"> 🛡️ Deletion Watch</label><br><br>
+        <button @click="bundle" :disabled="bundling || selected.size === 0">
+          {{ bundling ? 'Bundling...' : '📦 Download ZIP' }}
+        </button>
+      </div>
+      <div style="flex:1;padding:15px;overflow-y:auto;">
+        <h3>📁 Scraped Assets ({{ assets.length }})</h3>
         <div v-for="src in assets" :key="src" style="margin:5px 0;">
           <input type="checkbox" :checked="selected.has(src)" @change="toggle(src)">
-          <label>{{ src.split('/').pop() }}</label>
+          <a :href="src" target="_blank" rel="noopener noreferrer" style="color:#0af;text-decoration:underline;">
+            {{ src.split('/').pop() }}
+          </a>
         </div>
-        <button @click="bundle" :disabled="bundling || selected.size === 0">
-          {{ bundling ? 'Bundling...' : 'Download ZIP' }}
-        </button>
       </div>
     `
   }).mount('#harvester-vault');
